@@ -1,15 +1,10 @@
 {
   "functions": {
-    "api/groups.js":    { "memory": 256, "maxDuration": 15 },
-    "api/agent.js":     { "memory": 256, "maxDuration": 30 },
-    "api/keepalive.js": { "memory": 256, "maxDuration": 15 }
+    "api/groups.js": { "maxDuration": 15 },
+    "api/agent.js":  { "maxDuration": 30 }
   },
   "rewrites": [
-    { "source": "/api/groups",    "destination": "/api/groups.js" },
-    { "source": "/api/agent",     "destination": "/api/agent.js" },
-    { "source": "/api/keepalive", "destination": "/api/keepalive.js" }
-  ],
-  "crons": [
-    { "path": "/api/keepalive", "schedule": "0 6 * * *" }
+    { "source": "/api/groups", "destination": "/api/groups.js" },
+    { "source": "/api/agent",  "destination": "/api/agent.js" }
   ]
 }

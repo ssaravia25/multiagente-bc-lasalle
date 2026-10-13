@@ -62,7 +62,7 @@ node server.js
 # Abre http://localhost:3001
 ```
 
-En modo local **cada agente usa un modelo Claude distinto**: tres familias (Haiku, Sonnet y Opus) y dos generaciones. Se configuran en el bloque `AGENTS` de `server.js` (`model` y `effort`), y la web muestra el modelo y el prompt de cada agente en su tarjeta. Al hacer clic, la tarjeta se da vuelta.
+En modo local **cada agente usa un modelo Claude distinto**: tres familias (Haiku, Sonnet y Opus) y dos generaciones. Se configuran en `web/agents.json` (`model`, `effort`, explicación y prompt), que leen tanto `server.js` como la web. Cada tarjeta muestra el modelo del agente y, al hacer clic, se da vuelta y enseña su prompt.
 
 | Agente | Modelo | Esfuerzo | Por qué |
 |--------|--------|----------|---------|
@@ -75,36 +75,36 @@ En modo local **cada agente usa un modelo Claude distinto**: tres familias (Haik
 
 - Cada agente se ejecuta con `claude --print --model <modelo> --effort <nivel> --system-prompt <prompt> --tools ""`: el prompt del agente reemplaza al de Claude Code y el agente no usa herramientas.
 - Sin `--effort`, Claude Code razona con su nivel por defecto (alto) y el pipeline tarda ~6 min.
-- Los grupos (pestaña Casos Grupales) se guardan en `datos/grupos.json` (no se sube a git).
+- Al terminar el agente Finanzas se dibuja el gráfico **Flujo de caja del proyecto** (antes, la tarjeta muestra un aviso): barras con el flujo de cada año y la curva del flujo acumulado descontado, que termina en el VAN y marca el payback. Los datos salen de un bloque `json` que el agente agrega al final de su respuesta; el VAN del gráfico se recalcula con esos flujos.
+- Los grupos (pestaña Casos Grupales) son los mismos de la web: el servidor local los lee y guarda en Vercel (`GROUPS_URL` para apuntar a otro despliegue).
 - Los agentes corren con la cuenta con la que está autenticada la CLI. Si esa cuenta pertenece a una organización con instrucciones propias, esas instrucciones también llegan a los agentes y pueden aparecer en las respuestas. Para la demo conviene una cuenta sin instrucciones de organización.
 
-### Modo Vercel — Claude Haiku API (~4s por agente)
+### Versión web (Vercel) — inscripción de grupos
 
-Los 6 agentes usan el mismo modelo (Claude Haiku 4.5). Los grupos se guardan en JSONBlob: los 10 blobs de `api/groups.js` estaban caducados al 12-10-2026 (el keepalive reportaba 10 de 10 caídos), así que antes de usar esta versión hay que crear blobs nuevos y volver a desplegar.
+https://vercel-deploy-jet-tau.vercel.app es la página que usan los alumnos para inscribir su grupo, guardar su Business Case y votar. Muestra las tarjetas de los agentes (modelo y prompt), pero el pipeline multi-agente se ejecuta en local.
 
-Despliega la carpeta `web/` en Vercel y configura la variable de entorno:
-
-```
-ANTHROPIC_API_KEY=sk-ant-...
-```
-
-```bash
-cd web
-vercel --prod
-```
+- **Grupos:** se guardan en Vercel Blob (store `bc-grupos-lasalle`, conectado al proyecto; Vercel crea solo la variable `BLOB_READ_WRITE_TOKEN`). Cada número de grupo se reserva una sola vez: si otro equipo ya lo tiene, la página lo avisa. Cada grupo vota una sola vez y su voto no se pierde al volver a guardar.
+- **Reset de datos:** pide la clave de administrador, que verifica el servidor. Configúrala en Vercel con `vercel env add ADMIN_PIN production`; si no existe, se usa la clave por defecto del código.
+- **Desplegar:** siempre desde `web/`:
+  ```bash
+  cd web
+  vercel --prod
+  ```
 
 ---
 
 ## Estructura del repositorio
 
 ```
-├── server.js              # Servidor local: agentes con claude CLI (un modelo por agente) + grupos en datos/
+├── server.js              # Servidor local: agentes con claude CLI (un modelo por agente); grupos vía Vercel
 ├── web/
 │   ├── index.html         # Frontend: 4 tabs (Resumen, Financiero, Grupos, Multi-Agente)
+│   ├── agents.json        # Modelo, esfuerzo, explicación y prompt de cada agente
+│   ├── package.json       # Dependencia de Vercel Blob
 │   ├── vercel.json        # Configuración Vercel
 │   └── api/
-│       ├── agent.js       # Serverless: llama a Claude Haiku vía API
-│       └── groups.js      # Serverless: persistencia de grupos (JSONBlob)
+│       ├── agent.js       # Serverless: desactivado en la web (solo responde si hay ANTHROPIC_API_KEY)
+│       └── groups.js      # Serverless: grupos, votos y reset en Vercel Blob
 └── scripts/
     └── financial_module.gs  # Google Apps Script: módulo financiero interactivo (VAN/TIR/ROI/Payback)
 ```

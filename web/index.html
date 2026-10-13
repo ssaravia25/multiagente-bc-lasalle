@@ -202,6 +202,55 @@ a { color: var(--blue); }
   .flip[data-state="running"] .flip-front { animation: none; }
 }
 
+/* ── FLUJO DE CAJA (gráfico del agente Finanzas) ── */
+.cf-card { position: relative; }
+.cf-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--dim); }
+.cf-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.cf-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.cf-key.pos { background: #3987e5; }
+.cf-key.neg { background: #e66767; }
+.cf-key.line { width: 18px; height: 2px; border-radius: 1px; background: #199e70; position: relative; }
+.cf-key.line::after { content: ''; position: absolute; left: 5px; top: -4px; width: 8px; height: 8px; border-radius: 50%; background: #199e70; }
+.cf-empty { padding: 36px 20px; text-align: center; font-size: 13px; line-height: 1.7; color: var(--dim); background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; }
+.cf-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.cf-grid { stroke: #232d42; stroke-width: 1; }
+.cf-zero { stroke: #64748b; stroke-width: 1; }
+.cf-axis { fill: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+.cf-bar.pos { fill: #3987e5; }
+.cf-bar.neg { fill: #e66767; }
+.cf-line { fill: none; stroke: #199e70; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.cf-area { fill: #199e70; opacity: .1; }
+.cf-dot { fill: #199e70; stroke: #161d2e; stroke-width: 2; }
+.cf-mark { fill: var(--card); stroke: var(--text); stroke-width: 2; }
+.cf-label { fill: var(--text); font-size: 12px; font-weight: 600; }
+.cf-label.big { font-size: 15px; font-weight: 800; }
+.cf-label.dim { fill: var(--dim); font-weight: 500; }
+.cf-hit { fill: transparent; outline: none; }
+.cf-hit:hover, .cf-hit:focus { fill: rgba(148,163,184,.07); }
+.cf-tip { position: absolute; pointer-events: none; z-index: 5; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; font-size: 12px; line-height: 1.6; color: var(--text); white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0,0,0,.35); font-variant-numeric: tabular-nums; }
+.cf-tip b { display: block; margin-bottom: 2px; }
+.cf-tip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+.cf-table { margin-top: 10px; }
+.cf-table summary { cursor: pointer; font-size: 12px; color: var(--dim); }
+.cf-table table { margin-top: 8px; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cf-table th, .cf-table td { padding: 5px 12px; border-bottom: 1px solid var(--border); text-align: right; }
+.cf-table th { color: var(--dim); font-weight: 600; }
+.cf-table th:first-child, .cf-table td:first-child { text-align: left; }
+
+.cf-anim .cf-bar { transform-box: fill-box; animation: cfGrow .55s cubic-bezier(.2,.7,.2,1) both; }
+.cf-anim .cf-bar.pos { transform-origin: 50% 100%; }
+.cf-anim .cf-bar.neg { transform-origin: 50% 0%; }
+.cf-anim .cf-line { animation: cfDraw 1.2s ease-out both; }
+.cf-anim .cf-fade { animation: cfFade .45s ease-out both; }
+@keyframes cfGrow { from { transform: scaleY(0); } }
+@keyframes cfDraw { to { stroke-dashoffset: 0; } }
+@keyframes cfFade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cf-anim .cf-bar, .cf-anim .cf-line, .cf-anim .cf-fade { animation: none; }
+}
+
 .agent-panel { background: var(--bg3); border-radius: 10px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; }
 .agent-panel h3 { font-size: 14px; color: var(--cyan); font-weight: 700; margin-bottom: 12px; flex-shrink: 0; }
 .agent-output { font-size: 13px; line-height: 1.7; color: var(--text); overflow-y: auto; flex: 1; }
@@ -654,6 +703,7 @@ a { color: var(--blue); }
     <button class="btn btn-sm btn-outline" onclick="refreshGroups()">🔄 Actualizar</button>
     <button class="btn btn-sm" style="color:var(--red);border:1px solid rgba(239,68,68,.4);background:rgba(239,68,68,.08);" onclick="resetAllGroups()">🗑️ Reset datos</button>
   </div>
+  <div id="groups-error" class="warn-box" style="display:none;margin-bottom:16px;"></div>
 
   <!-- ── FORM VIEW ── -->
   <div id="gview-form">
@@ -678,7 +728,8 @@ a { color: var(--blue); }
           <input type="text" class="form-input" id="group-name" placeholder="Ej: Team Alpha">
         </div>
       </div>
-      <button class="btn btn-primary" onclick="registerGroup()">Registrar Grupo →</button>
+      <button class="btn btn-primary" id="btn-register" onclick="registerGroup()">Registrar Grupo →</button>
+      <div id="register-status" style="font-size:13px;margin-top:10px;"></div>
     </div>
 
     <!-- BC Form (hidden until registered) -->
@@ -859,6 +910,22 @@ a { color: var(--blue); }
       <div class="pipe-row single" id="row-end"></div>
     </div>
     <div class="pipe-status" id="canvas-status">Pulsa "Ejecutar Agentes" para iniciar.</div>
+  </div>
+
+  <!-- Flujo de caja: aparece cuando el agente Finanzas entrega sus cifras -->
+  <div class="card cf-card" id="cashflow-card">
+    <div class="pipe-head">
+      <div class="card-title">📈 Flujo de caja del proyecto</div>
+      <div class="cf-legend" aria-hidden="true">
+        <span><i class="cf-key neg"></i>Inversión / flujo negativo</span>
+        <span><i class="cf-key pos"></i>Flujo positivo</span>
+        <span><i class="cf-key line"></i>Acumulado descontado (termina en el VAN)</span>
+      </div>
+    </div>
+    <div class="card-sub" id="cashflow-sub"></div>
+    <div class="cf-chart" id="cashflow-chart"></div>
+    <div class="cf-tip" id="cashflow-tip" hidden></div>
+    <details class="cf-table"><summary>Ver los datos en tabla</summary><div id="cashflow-table"></div></details>
   </div>
 
   <!-- Output panel -->
@@ -1066,25 +1133,64 @@ function showGroupView(view) {
   if (view==='vote')    loadVoteView();
 }
 
-async function refreshGroups() {
-  try {
-    const r = await fetch('/api/groups'); if(!r.ok) return;
-    const d = await r.json();
-    allGroups = d.groups || [];
-  } catch(e) { console.error(e); }
+// Lee la respuesta de la API de grupos; si falla, lanza el mensaje del servidor
+async function groupsApi(options) {
+  const r = await fetch('/api/groups', options);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('Error ' + r.status));
+  return d;
 }
 
-function registerGroup() {
+function showGroupsError(msg) {
+  const box = document.getElementById('groups-error');
+  box.style.display = msg ? 'block' : 'none';
+  box.textContent = msg ? '⚠️ ' + msg : '';
+}
+
+async function refreshGroups() {
+  try {
+    const d = await groupsApi();
+    allGroups = d.groups || [];
+    showGroupsError('');
+    updateSlotOptions();
+    return true;
+  } catch (e) {
+    showGroupsError('No se pudieron cargar los grupos: ' + e.message + '. Pulsa 🔄 Actualizar para reintentar.');
+    return false;
+  }
+}
+
+// Marca en el selector los números de grupo que ya tienen equipo
+function updateSlotOptions() {
+  document.querySelectorAll('#group-slot option[value]').forEach(opt => {
+    if (!opt.value) return;
+    const g = allGroups.find(x => x.slot === opt.value);
+    const n = opt.value.replace('g', '');
+    opt.textContent = g && g.teamName ? `Grupo ${n} — ${g.teamName}` : `Grupo ${n} (libre)`;
+  });
+}
+
+async function registerGroup() {
   const slot = document.getElementById('group-slot').value;
-  const name = document.getElementById('group-name').value.trim();
-  if (!slot || !name) { alert('Selecciona un slot y escribe el nombre del equipo'); return; }
-  mySlot = slot; myName = name;
-  localStorage.setItem('bc_slot', slot);
-  localStorage.setItem('bc_name', name);
-  document.getElementById('card-register').style.display='none';
-  document.getElementById('bc-form').style.display='block';
-  // Load any previously saved BC for this slot
-  loadSavedBC();
+  const name = document.getElementById('group-name').value.trim().slice(0, 40);
+  const status = document.getElementById('register-status');
+  if (!slot || !name) { status.innerHTML = '<span style="color:var(--gold)">Selecciona un número de grupo y escribe el nombre del equipo.</span>'; return; }
+  const btn = document.getElementById('btn-register');
+  btn.disabled = true; status.innerHTML = '<span style="color:var(--dim)">Registrando...</span>';
+  try {
+    const d = await groupsApi({ method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'register', slot, teamName:name }) });
+    mySlot = slot; myName = d.teamName || name;
+    localStorage.setItem('bc_slot', slot);
+    localStorage.setItem('bc_name', myName);
+    status.innerHTML = '';
+    document.getElementById('card-register').style.display='none';
+    document.getElementById('bc-form').style.display='block';
+    await loadSavedBC();
+  } catch (e) {
+    status.innerHTML = `<span style="color:var(--red)">❌ ${escapeHTML(e.message)}</span>`;
+    refreshGroups();
+  }
+  btn.disabled = false;
 }
 
 async function loadSavedBC() {
@@ -1134,9 +1240,28 @@ async function restoreSession() {
   const slot = localStorage.getItem('bc_slot');
   const name = localStorage.getItem('bc_name');
   if (!slot || !name) return;
-  mySlot = slot; myName = name;
   document.getElementById('group-slot').value = slot;
   document.getElementById('group-name').value = name;
+  if (!(await refreshGroups())) return;
+  const g = allGroups.find(x => x.slot === slot);
+  const owner = g && g.teamName;
+  if (owner && owner.trim().toLowerCase() !== name.trim().toLowerCase()) {
+    // El número de grupo ahora es de otro equipo (por ejemplo, después de un reset)
+    localStorage.removeItem('bc_slot'); localStorage.removeItem('bc_name');
+    document.getElementById('register-status').innerHTML =
+      `<span style="color:var(--gold)">El Grupo ${slot.replace('g','')} ahora es de «${escapeHTML(owner)}». Regístrate de nuevo.</span>`;
+    return;
+  }
+  if (!owner) {
+    // Los datos se resetearon: volver a reservar el número con el mismo nombre
+    try {
+      await groupsApi({ method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ action:'register', slot, teamName:name }) });
+    } catch (e) {
+      document.getElementById('register-status').innerHTML = `<span style="color:var(--red)">❌ ${escapeHTML(e.message)}</span>`;
+      return;
+    }
+  }
+  mySlot = slot; myName = name;
   document.getElementById('card-register').style.display = 'none';
   document.getElementById('bc-form').style.display = 'block';
   await loadSavedBC();
@@ -1209,16 +1334,11 @@ async function saveGroupBC() {
 
   btn.disabled=true; status.innerHTML='<div class="spinner"></div>&nbsp;Guardando...';
   try {
-    const r = await fetch('/api/groups', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    if (r.ok) {
-      status.innerHTML='✅ Guardado · <button class="btn btn-sm btn-outline" style="padding:4px 10px;font-size:12px;" onclick="showGroupView(\'compare\')">Ver Comparativa →</button>';
-      // Pre-cargar la tabla comparativa en segundo plano
-      await refreshGroups();
-    } else {
-      const err = await r.json().catch(()=>({}));
-      status.innerHTML=`❌ Error al guardar: ${err.error||r.status}`;
-    }
-  } catch(e) { status.innerHTML='❌ Error de red: '+e.message; }
+    await groupsApi({ method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    status.innerHTML='✅ Guardado · <button class="btn btn-sm btn-outline" style="padding:4px 10px;font-size:12px;" onclick="showGroupView(\'compare\')">Ver Comparativa →</button>';
+    // Pre-cargar la tabla comparativa en segundo plano
+    await refreshGroups();
+  } catch(e) { status.innerHTML = '❌ No se pudo guardar: ' + escapeHTML(e.message); }
   btn.disabled=false;
 }
 
@@ -1233,14 +1353,14 @@ function loadComparativeTable() {
       const vanCls = (f.van||0)>0?'val-pos':'val-neg';
       const tirCls = (f.tir||0)>(f.wacc||10)/100?'val-pos':'val-neg';
       return `<tr>
-        <td><strong>${g.teamName}</strong><br><span style="color:var(--dim);font-size:11px">${g.slot}</span></td>
-        <td>${altNames[g.alternative]||g.alternative||'—'}</td>
+        <td><strong>${escapeHTML(g.teamName)}</strong><br><span style="color:var(--dim);font-size:11px">${g.slot}</span></td>
+        <td>${escapeHTML(altNames[g.alternative]||g.alternative||'—')}</td>
         <td><strong style="color:var(--gold)">€${((f.investment_total||0)/1e6).toFixed(2)}M</strong></td>
         <td class="${vanCls}">${fmtCurrency(f.van||0)}</td>
         <td class="${tirCls}">${((f.tir||0)*100).toFixed(1)}%</td>
         <td>${f.payback===99?'>5 años':f.payback+' años'}</td>
-        <td style="font-size:12px;max-width:180px;">${(g.risks||'—').substring(0,80)}${(g.risks||'').length>80?'…':''}</td>
-        <td style="font-size:12px;">${(g.recommendation||'—').substring(0,60)}</td>
+        <td style="font-size:12px;max-width:180px;">${escapeHTML((g.risks||'—').substring(0,80))}${(g.risks||'').length>80?'…':''}</td>
+        <td style="font-size:12px;">${escapeHTML((g.recommendation||'—').substring(0,60))}</td>
       </tr>`;
     }).join('');
   });
@@ -1258,18 +1378,18 @@ function loadVoteView() {
     }
 
     const myGroup   = mySlot ? active.find(g => g.slot === mySlot) : null;
-    const voted     = myGroup?.vote || localStorage.getItem('bc_voted');
+    const voted     = myGroup?.vote || '';
 
     if (voted) {
       const votedGroup = active.find(g => g.slot === voted);
       voteList.innerHTML = `
-        <div class="vote-locked">✅ Tu voto ya ha sido registrado${votedGroup ? ' para <strong>' + votedGroup.teamName + '</strong>' : ''}. No puede modificarse.</div>
+        <div class="vote-locked">✅ Tu voto ya ha sido registrado${votedGroup ? ' para <strong>' + escapeHTML(votedGroup.teamName) + '</strong>' : ''}. No puede modificarse.</div>
         ${active.map(g => `
           <div class="vote-card disabled${g.slot === voted ? ' selected' : ''}">
             <div class="vote-radio"></div>
             <div style="flex:1">
-              <strong>${g.teamName}</strong> <span class="badge badge-blue">${g.slot}</span>
-              <div style="font-size:12px;color:var(--dim);margin-top:2px;">${(g.summary||'').substring(0,80)}…</div>
+              <strong>${escapeHTML(g.teamName)}</strong> <span class="badge badge-blue">${g.slot}</span>
+              <div style="font-size:12px;color:var(--dim);margin-top:2px;">${escapeHTML((g.summary||'').substring(0,80))}…</div>
             </div>
             ${g.slot === voted ? '<span style="color:var(--green);font-size:12px;">← tu voto</span>' : ''}
           </div>`).join('')}`;
@@ -1282,9 +1402,9 @@ function loadVoteView() {
             onclick="${g.slot !== mySlot ? `selectVote('${g.slot}')` : ''}">
             <div class="vote-radio" id="vote-radio-${g.slot}"></div>
             <div style="flex:1">
-              <strong>${g.teamName}</strong> <span class="badge badge-blue">${g.slot}</span>
+              <strong>${escapeHTML(g.teamName)}</strong> <span class="badge badge-blue">${g.slot}</span>
               ${g.slot === mySlot ? '<span style="color:var(--dim);font-size:11px;"> (tu grupo)</span>' : ''}
-              <div style="font-size:12px;color:var(--dim);margin-top:2px;">${(g.summary||'').substring(0,80)}…</div>
+              <div style="font-size:12px;color:var(--dim);margin-top:2px;">${escapeHTML((g.summary||'').substring(0,80))}…</div>
             </div>
           </div>`).join('')}
         <button class="btn btn-primary" id="btn-confirm-vote" onclick="confirmVote()" disabled
@@ -1310,19 +1430,23 @@ async function confirmVote() {
   if (!confirm(`¿Confirmas tu voto por "${teamName}"?\n\nEsta acción NO se puede deshacer.`)) return;
   const btn = document.getElementById('btn-confirm-vote');
   btn.disabled = true; btn.textContent = '⏳ Registrando...';
-  await fetch('/api/groups', { method:'PUT', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ action:'vote', slot:mySlot, votedFor:selectedVoteSlot }) });
-  localStorage.setItem('bc_voted', selectedVoteSlot);
+  try {
+    await groupsApi({ method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'vote', slot:mySlot, teamName:myName, votedFor:selectedVoteSlot }) });
+  } catch (e) {
+    alert('❌ No se registró el voto: ' + e.message);
+  }
   loadVoteView();
 }
 
 async function resetAllGroups() {
   const pin = prompt('🔑 Introduce la clave de administrador para resetear todos los datos:');
   if (pin === null) return;
-  if (pin !== 'lasalle26') { alert('❌ Clave incorrecta.'); return; }
   if (!confirm('⚠️ Se borrarán TODOS los grupos y votos. ¿Continuar?')) return;
-  await fetch('/api/groups', { method:'PUT', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ action:'reset' }) });
+  try {
+    await groupsApi({ method:'PUT', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'reset', pin }) });
+  } catch (e) { alert('❌ ' + e.message); return; }
   localStorage.removeItem('bc_slot');
   localStorage.removeItem('bc_name');
   localStorage.removeItem('bc_voted');
@@ -1356,29 +1480,21 @@ function renderVoteResults(groups) {
 
 // ── MULTI-AGENT ───────────────────────────────────────────────────────────────
 // ── MULTI-AGENTE ─────────────────────────────────────────────────────────────
-// En modo local, server.js inyecta window.AGENT_CONFIG: modelo, explicación y prompt de cada agente.
-// En Vercel no existe: todos los agentes usan Claude Haiku 4.5 vía API (web/api/agent.js).
+// Modelo, explicación y prompt de cada agente: web/agents.json (el mismo archivo que usa server.js).
+// En local, server.js lo inyecta como window.AGENT_CONFIG y los agentes se ejecutan con claude CLI.
+// En la web (Vercel) se lee agents.json solo para mostrar las tarjetas: el pipeline corre en local.
 const AGENTS = ['orchestrator','research','finance','legal','risk','report'];
-const FALLBACK_AGENTS = {
-  orchestrator: { name:'Orquestador', icon:'🎯', color:'#3b82f6', short:'Descompone la idea',
-    role:'Descompone la idea inicial en hipótesis clave para los agentes especializados: título del proyecto e hipótesis de mercado, financiera, legal y de riesgo. Es el punto de entrada del pipeline multi-agente.' },
-  research:     { name:'Research', icon:'🔍', color:'#8b5cf6', short:'Mercado y competencia',
-    role:'Analiza el mercado objetivo, la competencia (especialmente fintechs y neobancos) y las tendencias relevantes (Gen Z, digitalización, open banking), y justifica por qué ahora es el momento de actuar.' },
-  finance:      { name:'Finanzas', icon:'💰', color:'#10b981', short:'VAN, TIR, ROI y payback',
-    role:'Estima la inversión (CapEx + OpEx), proyecta ingresos a 5 años, sugiere el WACC para banca española y calcula VAN, TIR, ROI y payback con escenarios optimista, base y pesimista.' },
-  legal:        { name:'Legal', icon:'⚖️', color:'#f59e0b', short:'Regulación y cumplimiento',
-    role:'Identifica el marco regulatorio aplicable (PSD2, RGPD, DORA, Basilea III, Banco de España), las licencias necesarias, los requisitos de cumplimiento y los principales riesgos legales.' },
-  risk:         { name:'Riesgos', icon:'⚠️', color:'#ef4444', short:'Top 5 riesgos',
-    role:'Identifica los 5 riesgos principales por tipo, probabilidad e impacto, propone mitigantes concretos y evalúa el escenario catastrófico (tail risk).' },
-  report:       { name:'Redactor', icon:'📄', color:'#06b6d4', short:'Business Case final',
-    role:'Sintetiza el trabajo de todos los agentes en un Business Case ejecutivo con resumen, problema, alternativa, análisis financiero, riesgos y la recomendación de aprobar o no aprobar.' },
-};
-const AGENT_INFO = AGENTS.map(key => {
-  const local = window.AGENT_CONFIG && window.AGENT_CONFIG.agents && window.AGENT_CONFIG.agents[key];
-  if (local) return { key, ...local };
-  return { key, ...FALLBACK_AGENTS[key], model:'claude-haiku-4-5', modelLabel:'Claude Haiku 4.5', family:'Haiku', generation:'api', prompt:null,
-    why:'En la versión web (Vercel) todos los agentes usan el mismo modelo vía API. Ejecuta node server.js para ver un modelo distinto por agente.' };
-});
+let AGENT_INFO = [];
+const AGENTS_RUN_LOCAL = !!(window.AGENT_CONFIG && window.AGENT_CONFIG.agents);
+
+async function loadAgentConfig() {
+  let agents = AGENTS_RUN_LOCAL ? window.AGENT_CONFIG.agents : null;
+  if (!agents) {
+    try { agents = await fetch('agents.json', { cache: 'no-store' }).then(r => (r.ok ? r.json() : null)); }
+    catch { agents = null; }
+  }
+  AGENT_INFO = agents ? AGENTS.map(key => ({ key, ...agents[key] })) : [];
+}
 const FAMILY_COLORS = { Opus:'#c084fc', Sonnet:'#fb923c', Haiku:'#2dd4bf' };
 const GENERATION_LABEL = { actual:'generación actual', anterior:'generación anterior', api:'vía API' };
 const EFFORT_LABEL = { low:'esfuerzo bajo', medium:'esfuerzo medio', high:'esfuerzo alto' }; // --effort de claude CLI
@@ -1414,7 +1530,7 @@ function agentCardHTML(a, idx) {
           <div class="fc-model-label">Modelo de IA</div>
           <div class="fc-model-name">${a.modelLabel}</div>
           <div class="fc-gen">${a.family} · ${GENERATION_LABEL[a.generation] || a.generation}</div>
-          <div class="fc-gen">${a.generation === 'api' ? 'Mismo modelo en los 6 agentes' : 'Razonamiento: ' + (EFFORT_LABEL[a.effort] || 'nivel fijo del modelo')}</div>
+          <div class="fc-gen">Razonamiento: ${EFFORT_LABEL[a.effort] || 'nivel fijo del modelo'}</div>
         </div>
         <div class="fc-meta" id="meta-${idx}"></div>
         <div class="fc-foot">
@@ -1436,18 +1552,19 @@ function agentCardHTML(a, idx) {
 }
 
 function buildAgentCards() {
+  const summary = document.getElementById('pipe-summary');
+  if (!AGENT_INFO.length) {
+    summary.textContent = 'No se pudo cargar la configuración de los agentes (agents.json).';
+    return;
+  }
   document.getElementById('row-start').innerHTML  = agentCardHTML(AGENT_INFO[0], 0);
   document.getElementById('row-middle').innerHTML = [1,2,3,4].map(i => agentCardHTML(AGENT_INFO[i], i)).join('');
   document.getElementById('row-end').innerHTML    = agentCardHTML(AGENT_INFO[5], 5);
 
-  const summary = document.getElementById('pipe-summary');
-  if (window.AGENT_CONFIG) {
-    const models   = new Set(AGENT_INFO.map(a => a.model)).size;
-    const families = [...new Set(AGENT_INFO.map(a => a.family))].join(', ');
-    summary.innerHTML = `<strong>${AGENT_INFO.length} agentes · ${models} modelos distintos</strong> · familias ${families} · generación actual y anterior · tu suscripción (claude CLI)`;
-  } else {
-    summary.innerHTML = `<strong>${AGENT_INFO.length} agentes</strong> · Claude Haiku 4.5 vía API (versión web)`;
-  }
+  const models   = new Set(AGENT_INFO.map(a => a.model)).size;
+  const families = [...new Set(AGENT_INFO.map(a => a.family))].join(', ');
+  summary.innerHTML = `<strong>${AGENT_INFO.length} agentes · ${models} modelos distintos</strong> · familias ${families} · generación actual y anterior · `
+    + (AGENTS_RUN_LOCAL ? 'tu suscripción (claude CLI)' : 'se ejecutan en el computador del profesor');
 }
 
 function toggleFlip(idx) {
@@ -1464,7 +1581,7 @@ function showAgentOutput(idx) {
   title.textContent = `${a.icon} ${a.name} · ${a.modelLabel}`;
   content.style.color = '';
   if (agentOutputs[idx]) {
-    content.innerHTML = renderMarkdown(agentOutputs[idx]);
+    content.innerHTML = renderMarkdown(a.key === 'finance' ? stripCashflowBlock(agentOutputs[idx]) : agentOutputs[idx]);
   } else if (agentErrors[idx]) {
     content.innerHTML = `<div style="color:var(--red)">❌ Error en ${a.name}: ${escapeHTML(agentErrors[idx])}</div>`;
   } else {
@@ -1519,6 +1636,188 @@ function setNodeState(idx, state, info) {
   outBtn.textContent = agentErrors[idx] ? 'Ver error' : 'Ver resultado';
 }
 
+// ── FLUJO DE CAJA (gráfico con las cifras del agente Finanzas) ──────────────
+// El agente Finanzas termina su respuesta con un bloque ```json (inversión, flujos y WACC).
+// Barras = flujo de cada año; curva = flujo acumulado descontado, que termina en el VAN.
+let cashflowData = null;
+
+function parseCashflow(text) {
+  const blocks = [...String(text).matchAll(/```json\s*([\s\S]*?)```/g)];
+  if (!blocks.length) return null;
+  try {
+    const d = JSON.parse(blocks[blocks.length - 1][1]);
+    const inv = Math.abs(Number(d.inversion_inicial));
+    const flows = Array.isArray(d.flujos) ? d.flujos.map(Number) : [];
+    let wacc = Number(d.wacc);
+    if (!isFinite(inv) || !flows.length || flows.length > 10 || flows.some(v => !isFinite(v)) || !isFinite(wacc)) return null;
+    if (wacc > 0 && wacc < 1) wacc *= 100; // vino como fracción (0,095)
+    return { inv, flows, wacc };
+  } catch { return null; }
+}
+
+function stripCashflowBlock(text) {
+  return String(text)
+    .replace(/```json[\s\S]*?```/g, '')
+    .replace(/^.*DATOS PARA EL GR[ÁA]FICO.*$/gmi, '')
+    .trim()
+    .replace(/(\n\s*-{3,})+$/, '');
+}
+
+function cashflowSeries({ inv, flows, wacc }) {
+  const r = wacc / 100;
+  let cum = 0;
+  const rows = [-inv, ...flows].map((flow, t) => {
+    const disc = flow / Math.pow(1 + r, t);
+    cum += disc;
+    return { t, flow, disc, cum };
+  });
+  let payback = null; // payback descontado, interpolado dentro del año
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i-1].cum < 0 && rows[i].cum >= 0) { payback = (i - 1) + (-rows[i-1].cum) / rows[i].disc; break; }
+  }
+  return { rows, van: cum, payback };
+}
+
+function fmtM(v, signed) {
+  const s = Math.abs(v).toLocaleString('es-ES', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const zero = s === '0,0';
+  return (v < 0 && !zero ? '−' : (signed && v > 0 && !zero ? '+' : '')) + s + ' M€';
+}
+
+function niceStep(range, count) {
+  const raw = range / count;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+}
+
+function barPath(cx, y0, y1, w, radius) {
+  const h = Math.abs(y1 - y0);
+  if (h < 0.5) return '';
+  const r = Math.min(radius, h, w / 2), xa = cx - w / 2, xb = cx + w / 2;
+  const s = y1 < y0 ? 1 : -1; // 1 = barra hacia arriba (redondeada arriba), -1 = hacia abajo
+  return `M${xa},${y0} V${y1 + s*r} Q${xa},${y1} ${xa + r},${y1} H${xb - r} Q${xb},${y1} ${xb},${y1 + s*r} V${y0} Z`;
+}
+
+function renderCashflow(animate) {
+  const card = document.getElementById('cashflow-card');
+  card.hidden = false;
+  card.querySelector('.cf-table').hidden = !cashflowData;
+  if (!cashflowData) {
+    // Sin datos todavía: la tarjeta se ve igual, con un aviso de qué aparecerá
+    document.getElementById('cashflow-sub').textContent = '';
+    document.getElementById('cashflow-table').innerHTML = '';
+    document.getElementById('cashflow-chart').innerHTML = `<div class="cf-empty">📈 Aquí aparecerá el flujo de caja del proyecto cuando termine el agente Finanzas: barras con el flujo de cada año y la curva que llega al VAN.${AGENTS_RUN_LOCAL ? '' : '<br>En la web solo se ve al ejecutar el sistema en local (node server.js).'}</div>`;
+    return;
+  }
+
+  const { rows, van, payback } = cashflowSeries(cashflowData);
+  const host = document.getElementById('cashflow-chart');
+  const W = Math.max(320, host.clientWidth), H = 300;
+  const m = { top: 40, right: 110, bottom: 34, left: 52 };
+  const pw = W - m.left - m.right, ph = H - m.top - m.bottom;
+
+  const vals = rows.flatMap(r => [r.flow, r.cum]).concat(0);
+  let lo = Math.min(...vals), hi = Math.max(...vals);
+  const step = niceStep((hi - lo) || 1, 5);
+  lo = Math.floor(lo / step) * step; hi = Math.ceil(hi / step) * step;
+  const y = v => m.top + (hi - v) / (hi - lo) * ph;
+  const slot = pw / rows.length;
+  const x = t => m.left + slot * (t + 0.5);
+  const barW = Math.min(24, slot * 0.45);
+  const y0 = y(0);
+  const tickFmt = v => (v < 0 ? '−' : '') + Math.abs(v).toLocaleString('es-ES', { maximumFractionDigits: step < 1 ? 1 : 0 });
+  const n = rows.length;
+  const lineDelay = n * 90 + 250, labelDelay = lineDelay + 1200;
+
+  let svg = '';
+  for (let i = 0, v = lo; v <= hi + step / 2; i++, v = lo + i * step) {
+    if (Math.abs(v) < step / 1e6) continue;
+    svg += `<line class="cf-grid" x1="${m.left}" x2="${m.left + pw}" y1="${y(v)}" y2="${y(v)}"/>`;
+    svg += `<text class="cf-axis" x="${m.left - 8}" y="${y(v) + 4}" text-anchor="end">${tickFmt(v)}</text>`;
+  }
+  svg += `<text class="cf-axis" x="${m.left - 8}" y="${y0 + 4}" text-anchor="end">0</text>`;
+
+  const xp = payback === null ? null : m.left + slot * (payback + 0.5);
+  if (xp !== null) {
+    svg += `<line class="cf-zero cf-fade" x1="${xp}" x2="${xp}" y1="${m.top - 8}" y2="${y0}" style="animation-delay:${labelDelay}ms"/>`;
+  }
+
+  rows.forEach(r => {
+    svg += `<text class="cf-axis" x="${x(r.t)}" y="${H - 10}" text-anchor="middle">Año ${r.t}</text>`;
+    const d = barPath(x(r.t), y0, y(r.flow), barW, 4);
+    if (d) svg += `<path class="cf-bar ${r.flow < 0 ? 'neg' : 'pos'}" d="${d}" style="animation-delay:${r.t * 90}ms"/>`;
+  });
+  svg += `<line class="cf-zero" x1="${m.left}" x2="${m.left + pw}" y1="${y0}" y2="${y0}"/>`;
+
+  const pts = rows.map(r => [x(r.t), y(r.cum)]);
+  const linePath = 'M' + pts.map(p => p.join(',')).join(' L');
+  svg += `<path class="cf-area cf-fade" d="${linePath} L${pts[n-1][0]},${y0} L${pts[0][0]},${y0} Z" style="animation-delay:${labelDelay}ms"/>`;
+  svg += `<path class="cf-line" d="${linePath}" style="animation-delay:${lineDelay}ms"/>`;
+  pts.forEach((p, i) => {
+    svg += `<circle class="cf-dot cf-fade" cx="${p[0]}" cy="${p[1]}" r="${i === n - 1 ? 6 : 4}" style="animation-delay:${lineDelay + (i / (n - 1)) * 1100}ms"/>`;
+  });
+
+  // Etiquetas selectivas: inversión, VAN al final de la curva y payback
+  const inv = rows[0];
+  svg += `<text class="cf-label cf-fade" x="${x(0)}" y="${y(inv.flow) + 22}" text-anchor="middle" style="animation-delay:${labelDelay}ms">Inversión ${fmtM(inv.flow)}</text>`;
+  const end = pts[n - 1];
+  svg += `<text class="cf-label dim cf-fade" x="${end[0] + 12}" y="${end[1] - 6}" style="animation-delay:${labelDelay}ms">VAN</text>`;
+  svg += `<text class="cf-label big cf-fade" x="${end[0] + 12}" y="${end[1] + 12}" style="animation-delay:${labelDelay}ms">${fmtM(van, true)}</text>`;
+  if (xp !== null) {
+    svg += `<circle class="cf-mark cf-fade" cx="${xp}" cy="${y0}" r="5" style="animation-delay:${labelDelay}ms"/>`;
+    const lx = Math.min(Math.max(xp, m.left + 60), m.left + pw - 60);
+    svg += `<text class="cf-label cf-fade" x="${lx}" y="${m.top - 14}" text-anchor="middle" style="animation-delay:${labelDelay}ms">Payback ≈ ${payback.toLocaleString('es-ES', { maximumFractionDigits: 1 })} años</text>`;
+  }
+
+  // Zonas de hover / foco por año (más grandes que las marcas)
+  rows.forEach(r => {
+    svg += `<rect class="cf-hit" data-t="${r.t}" tabindex="0" x="${m.left + slot * r.t}" y="${m.top}" width="${slot}" height="${ph}" rx="6" aria-label="Año ${r.t}: flujo ${fmtM(r.flow, true)}, acumulado descontado ${fmtM(r.cum, true)}"/>`;
+  });
+
+  host.classList.toggle('cf-anim', !!animate);
+  host.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Flujo de caja anual y acumulado descontado; VAN ${fmtM(van, true)}">${svg}</svg>`;
+
+  const line = host.querySelector('.cf-line');
+  const len = line.getTotalLength();
+  line.style.strokeDasharray = len;
+  line.style.strokeDashoffset = animate && !matchMedia('(prefers-reduced-motion: reduce)').matches ? len : 0;
+
+  const tip = document.getElementById('cashflow-tip');
+  const showTip = el => {
+    const r = rows[+el.dataset.t];
+    tip.innerHTML = `<b>Año ${r.t}</b><i style="background:${r.flow < 0 ? '#e66767' : '#3987e5'}"></i>Flujo del año: ${fmtM(r.flow, true)}<br>`
+      + `<i style="background:#199e70"></i>Acumulado descontado: ${fmtM(r.cum, true)}`;
+    tip.hidden = false;
+    const cb = card.getBoundingClientRect(), hb = el.getBoundingClientRect();
+    const left = Math.min(hb.left - cb.left + hb.width / 2 - tip.offsetWidth / 2, cb.width - tip.offsetWidth - 8);
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top = (hb.top - cb.top - tip.offsetHeight - 6) + 'px';
+  };
+  host.querySelectorAll('.cf-hit').forEach(el => {
+    el.addEventListener('mouseenter', () => showTip(el));
+    el.addEventListener('focus', () => showTip(el));
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+    el.addEventListener('blur', () => { tip.hidden = true; });
+  });
+
+  const fin = AGENT_INFO[2];
+  document.getElementById('cashflow-sub').textContent =
+    `Escenario base estimado por el agente ${fin.name} (${fin.modelLabel}) · millones de euros · descontado al ${cashflowData.wacc.toLocaleString('es-ES', { maximumFractionDigits: 1 })} % (WACC)`
+    + ' · el VAN se calcula con estos flujos'
+    + (payback === null ? ' · la inversión no se recupera en el horizonte proyectado' : '');
+  document.getElementById('cashflow-table').innerHTML =
+    '<table><tr><th>Año</th><th>Flujo del año</th><th>Flujo descontado</th><th>Acumulado descontado</th></tr>'
+    + rows.map(r => `<tr><td>Año ${r.t}</td><td>${fmtM(r.flow, true)}</td><td>${fmtM(r.disc, true)}</td><td>${fmtM(r.cum, true)}</td></tr>`).join('')
+    + '</table>';
+}
+
+let cashflowResizeTimer;
+window.addEventListener('resize', () => {
+  clearTimeout(cashflowResizeTimer);
+  cashflowResizeTimer = setTimeout(() => renderCashflow(false), 150);
+});
+
 function updateCanvasStatus(msg) {
   document.getElementById('canvas-status').textContent = msg;
 }
@@ -1561,6 +1860,14 @@ async function runAgent(idx, idea, context) {
 async function runAgents() {
   const idea = document.getElementById('agent-idea').value.trim();
   if (!idea) { alert('Por favor describe una idea de proyecto antes de ejecutar los agentes.'); return; }
+  if (!AGENTS_RUN_LOCAL) {
+    updateCanvasStatus('ℹ️ En la web solo se muestran los agentes: el pipeline se ejecuta en el computador del profesor.');
+    document.getElementById('agent-panel-content').innerHTML =
+      'El sistema multi-agente usa la cuenta de Claude de quien lo ejecuta, así que corre en local:<br><br>'
+      + '<code>node server.js</code> y abre <code>http://localhost:3001</code> (instrucciones en el README del repositorio).<br><br>'
+      + 'Aquí puedes hacer clic en cada agente para ver su modelo y su prompt.';
+    return;
+  }
 
   const btn = document.getElementById('btn-run-agents');
   btn.disabled = true; btn.textContent = '⏳ Procesando...';
@@ -1573,6 +1880,8 @@ async function runAgents() {
   }
   document.getElementById('link-out').classList.remove('lit');
   document.getElementById('link-in').classList.remove('lit');
+  cashflowData = null;
+  renderCashflow(false);
 
   const context = {};
   const panel   = document.getElementById('agent-panel-content');
@@ -1612,6 +1921,10 @@ async function runAgents() {
       runAgent(idx, idea, { orchestrator: context.orchestrator }).then(r => {
         context[AGENT_INFO[idx].key] = r.output;
         showAgentOutput(idx);
+        if (AGENT_INFO[idx].key === 'finance') {
+          cashflowData = parseCashflow(r.output);
+          renderCashflow(true);
+        }
         updateCanvasStatus(`✅ ${AGENT_INFO[idx].name} completado (${AGENT_INFO[idx].modelLabel})`);
         return r;
       })
@@ -1647,7 +1960,7 @@ async function runAgents() {
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  buildAgentCards();
+  loadAgentConfig().then(() => { buildAgentCards(); renderCashflow(false); });
   calcFinancial();
   restoreSession();
 

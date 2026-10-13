@@ -1,0 +1,9 @@
+{
+  "name": "multiagente-bc-web",
+  "private": true,
+  "type": "module",
+  "description": "Versión web (Vercel): páginas + funciones /api/agent y /api/groups",
+  "dependencies": {
+    "@vercel/blob": "2.8.0"
+  }
+}

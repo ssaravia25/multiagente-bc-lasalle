@@ -50,7 +50,14 @@ Responde en español con estas secciones:
 **ESCENARIOS**
 - Optimista / Base / Pesimista (1 línea cada uno)
 
-Usa rangos realistas para proyectos bancarios. Incluye cifras concretas.`,
+Usa rangos realistas para proyectos bancarios. Incluye cifras concretas.
+
+**DATOS PARA EL GRÁFICO**
+Termina con un bloque de código json con las cifras de tu escenario base, en millones de euros y solo con números:
+\`\`\`json
+{"inversion_inicial": <inversión del año 0, en positivo>, "flujos": [<flujo de caja neto año 1>, <año 2>, <año 3>, <año 4>, <año 5>], "wacc": <tasa de descuento en %>}
+\`\`\`
+Los flujos son netos (ingresos menos costes de cada año), no solo ingresos.`,
 
   legal: `Eres el Agente Legal y Regulatorio de un sistema multi-agente de Business Case bancario.
 Tu tarea: identificar el marco regulatorio aplicable a la iniciativa en España/Europa.
@@ -129,7 +136,9 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+  if (!apiKey) {
+    return res.status(503).json({ error: 'En la versión web el sistema multi-agente está desactivado: se ejecuta en local con node server.js (ver README).' });
+  }
 
   const { agent, idea, context } = req.body;
   if (!agent || !SYSTEM_PROMPTS[agent]) {

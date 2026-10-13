@@ -1,16 +1,17 @@
-const BLOB_BASE = 'https://jsonblob.com/api/jsonBlob';
-const BLOB_MAP = {
-  g1:  '019df6c2-5811-7749-9112-e852f22cb267',
-  g2:  '019df6c2-5bc1-7258-aa3b-75ec05a7caab',
-  g3:  '019df6c2-5f54-72f8-a9d0-40dad88028d7',
-  g4:  '019df6c2-6354-77ed-9423-f4d6bc23e26d',
-  g5:  '019df6c2-6755-7a94-88d9-36a52b16280a',
-  g6:  '019df6c2-6b65-7bb9-91f8-e8f174862a43',
-  g7:  '019df6c2-6ef1-7470-816e-90cf01e0e2aa',
-  g8:  '019df6c2-7292-7181-8626-fc8cc6fc484f',
-  g9:  '019df6c2-7692-7dbe-ab06-6327eff21675',
-  g10: '019df6c2-7a20-7693-b551-5e5bc5882fc4',
-};
+// Persistencia de grupos en Vercel Blob (store bc-grupos-lasalle → BLOB_READ_WRITE_TOKEN).
+//
+// Estructura, pensada para que dos alumnos no se pisen:
+//   bc/gen-<ts>.json                      marca de generación; el reset crea una nueva
+//   bc/<gen>/registro/<slot>.json         reserva del grupo: se crea una sola vez (sin sobrescribir)
+//   bc/<gen>/grupos/<slot>/<ts>-<id>.json cada guardado es un archivo nuevo; se lee el más reciente
+//   bc/<gen>/votos/<slot>.json            voto del grupo: también se crea una sola vez
+// Como ningún archivo se sobrescribe, nunca se lee una versión vieja desde la caché del CDN.
+
+import { put, list, del } from '@vercel/blob';
+
+const SLOTS = ['g1','g2','g3','g4','g5','g6','g7','g8','g9','g10'];
+const ADMIN_PIN = process.env.ADMIN_PIN || 'lasalle26';
+const MAX_TEXT = 4000;
 
 const EMPTY_GROUP = (slot) => ({
   slot,
@@ -25,88 +26,185 @@ const EMPTY_GROUP = (slot) => ({
   timestamp: 0,
 });
 
-async function readBlob(slot) {
-  const id = BLOB_MAP[slot];
-  if (!id) return EMPTY_GROUP(slot);
-  // Retry hasta 3 veces (JSONBlob a veces es flaky)
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r = await fetch(`${BLOB_BASE}/${id}`, { headers: { Accept: 'application/json' } });
-      if (r.ok) return await r.json();
-      if (r.status === 404) return EMPTY_GROUP(slot);
-    } catch { /* retry */ }
-    if (i < 2) await new Promise(r => setTimeout(r, 300 * (i + 1)));
-  }
-  return EMPTY_GROUP(slot);
+class HttpError extends Error {
+  constructor(status, message) { super(message); this.status = status; }
 }
 
-async function writeBlob(slot, data) {
-  const id = BLOB_MAP[slot];
-  if (!id) throw new Error(`Unknown slot: ${slot}`);
-  let lastErr;
-  // Retry hasta 3 veces con backoff exponencial
-  for (let i = 0; i < 3; i++) {
-    try {
-      const r = await fetch(`${BLOB_BASE}/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (r.ok) return await r.json();
-      lastErr = new Error(`JSONBlob write failed: ${r.status}`);
-    } catch (e) { lastErr = e; }
-    if (i < 2) await new Promise(r => setTimeout(r, 400 * (i + 1)));
+const text = (v, max = MAX_TEXT) => String(v ?? '').slice(0, max);
+const sameTeam = (a, b) => text(a).trim().toLowerCase().replace(/\s+/g, ' ') === text(b).trim().toLowerCase().replace(/\s+/g, ' ');
+
+async function writeJSON(pathname, data) {
+  return put(pathname, JSON.stringify(data), {
+    access: 'public',
+    contentType: 'application/json',
+    addRandomSuffix: false,
+    allowOverwrite: false,
+  });
+}
+
+async function readJSON(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error(`No se pudo leer ${url} (${r.status})`);
+  return r.json();
+}
+
+async function listAll(prefix) {
+  const blobs = [];
+  let cursor;
+  do {
+    const r = await list({ prefix, cursor, limit: 1000 });
+    blobs.push(...r.blobs);
+    cursor = r.hasMore ? r.cursor : undefined;
+  } while (cursor);
+  return blobs;
+}
+
+async function loadState() {
+  const blobs = await listAll('bc/');
+  const gens = blobs.map(b => b.pathname.match(/^bc\/gen-(\d+)\.json$/)).filter(Boolean).map(m => Number(m[1]));
+  const gen = gens.length ? String(Math.max(...gens)) : '0';
+  const claims = {}, saves = {}, votes = {};
+  for (const b of blobs) {
+    if (!b.pathname.startsWith(`bc/${gen}/`)) continue;
+    let m;
+    if ((m = b.pathname.match(/\/registro\/(g\d+)\.json$/))) claims[m[1]] = b;
+    else if ((m = b.pathname.match(/\/grupos\/(g\d+)\/(\d+)-\w+\.json$/))) (saves[m[1]] ||= []).push({ ts: Number(m[2]), blob: b });
+    else if ((m = b.pathname.match(/\/votos\/(g\d+)\.json$/))) votes[m[1]] = b;
   }
-  throw lastErr;
+  Object.values(saves).forEach(arr => arr.sort((a, b) => b.ts - a.ts));
+  return { gen, blobs, claims, saves, votes };
+}
+
+async function readGroups(state) {
+  return Promise.all(SLOTS.map(async slot => {
+    const claim = state.claims[slot];
+    if (!claim) return EMPTY_GROUP(slot);
+    const latest = state.saves[slot]?.[0];
+    const [c, s, v] = await Promise.all([
+      readJSON(claim.url),
+      latest ? readJSON(latest.blob.url) : null,
+      state.votes[slot] ? readJSON(state.votes[slot].url) : null,
+    ]);
+    return { ...EMPTY_GROUP(slot), ...(s || {}), slot, teamName: c.teamName, vote: v?.votedFor || '', timestamp: s?.timestamp || c.timestamp };
+  }));
+}
+
+async function claimOwner(state, slot) {
+  return state.claims[slot] ? (await readJSON(state.claims[slot].url)).teamName : null;
+}
+
+// Reserva el grupo para un equipo. Si ya lo tiene otro equipo → 409.
+async function register(state, slot, teamName) {
+  const owner = await claimOwner(state, slot);
+  if (owner !== null) {
+    if (sameTeam(owner, teamName)) return owner;
+    throw new HttpError(409, `El ${slot.replace('g', 'Grupo ')} ya está registrado por «${owner}». Elige otro número de grupo.`);
+  }
+  try {
+    await writeJSON(`bc/${state.gen}/registro/${slot}.json`, { slot, teamName, timestamp: Date.now() });
+    return teamName;
+  } catch (e) {
+    // Otro equipo lo reservó en el mismo instante: ver quién quedó
+    const fresh = await loadState();
+    const winner = await claimOwner(fresh, slot);
+    if (winner === null) throw e;
+    if (sameTeam(winner, teamName)) return winner;
+    throw new HttpError(409, `El ${slot.replace('g', 'Grupo ')} acaba de ser registrado por «${winner}». Elige otro número de grupo.`);
+  }
+}
+
+function sanitizeFinancials(f = {}) {
+  const num = v => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const revenues = Array.isArray(f.revenues) ? f.revenues.slice(0, 5).map(num) : [0,0,0,0,0];
+  while (revenues.length < 5) revenues.push(0);
+  return {
+    capex: num(f.capex), opex_y1: num(f.opex_y1), investment_total: num(f.investment_total), revenues,
+    wacc: num(f.wacc), van: num(f.van), tir: num(f.tir), payback: num(f.payback),
+  };
+}
+
+async function saveBC(state, body) {
+  const teamName = text(body.teamName, 40).trim();
+  if (!teamName) throw new HttpError(400, 'Falta el nombre del equipo.');
+  const owner = await register(state, body.slot, teamName);
+  const ts = Date.now();
+  await writeJSON(`bc/${state.gen}/grupos/${body.slot}/${ts}-${Math.random().toString(36).slice(2, 8)}.json`, {
+    slot: body.slot,
+    teamName: owner,
+    summary: text(body.summary),
+    problem: text(body.problem),
+    alternative: text(body.alternative, 40),
+    financials: sanitizeFinancials(body.financials),
+    risks: text(body.risks),
+    recommendation: text(body.recommendation),
+    timestamp: ts,
+  });
+  // Limpieza: borra los guardados anteriores de este grupo (si falla, no importa: se lee el más reciente)
+  const older = (state.saves[body.slot] || []).map(s => s.blob.url);
+  if (older.length) await del(older).catch(() => {});
+}
+
+async function vote(state, body) {
+  const { slot, votedFor } = body;
+  if (!SLOTS.includes(votedFor)) throw new HttpError(400, 'Grupo votado no válido.');
+  if (votedFor === slot) throw new HttpError(400, 'No puedes votar por tu propio grupo.');
+  const owner = await claimOwner(state, slot);
+  if (owner === null) throw new HttpError(400, 'Registra tu grupo antes de votar.');
+  if (body.teamName && !sameTeam(owner, body.teamName)) throw new HttpError(403, `El ${slot.replace('g', 'Grupo ')} pertenece a «${owner}».`);
+  if (!state.claims[votedFor]) throw new HttpError(400, 'Ese grupo no está registrado.');
+  if (state.votes[slot]) throw new HttpError(409, 'Tu grupo ya votó. El voto no se puede cambiar.');
+  try {
+    await writeJSON(`bc/${state.gen}/votos/${slot}.json`, { slot, votedFor, timestamp: Date.now() });
+  } catch {
+    throw new HttpError(409, 'Tu grupo ya votó. El voto no se puede cambiar.');
+  }
+}
+
+async function reset(state, pin) {
+  if (String(pin ?? '') !== ADMIN_PIN) throw new HttpError(403, 'Clave de administrador incorrecta.');
+  const marker = `bc/gen-${Date.now()}.json`;
+  await writeJSON(marker, { createdAt: new Date().toISOString() });
+  // Borra los datos de generaciones anteriores (la nueva generación ya está activa aunque esto falle)
+  const old = state.blobs.map(b => b.url);
+  if (old.length) await del(old).catch(() => {});
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      throw new HttpError(500, 'Falta conectar el almacenamiento de grupos (Vercel Blob) a este proyecto.');
+    }
+    const state = await loadState();
 
-  if (req.method === 'GET') {
-    const slots = Object.keys(BLOB_MAP);
-    const groups = await Promise.all(slots.map(readBlob));
-    return res.status(200).json({ groups, lastUpdated: Date.now(), class: 'BC-CaixaBank-2025' });
-  }
+    if (req.method === 'GET') {
+      const groups = await readGroups(state);
+      return res.status(200).json({ groups, lastUpdated: Date.now(), class: 'BC-CaixaBank-2025' });
+    }
 
-  if (req.method === 'PUT') {
-    const body = req.body;
-
-    // Vote action
-    if (body.action === 'vote') {
-      const { slot, votedFor } = body;
-      if (!BLOB_MAP[slot]) return res.status(400).json({ error: 'Invalid slot' });
-      const current = await readBlob(slot);
-      current.vote = votedFor;
-      current.timestamp = Date.now();
-      await writeBlob(slot, current);
+    if (req.method === 'PUT') {
+      const body = req.body || {};
+      if (body.action === 'reset') {
+        await reset(state, body.pin);
+        return res.status(200).json({ ok: true, message: 'All groups reset' });
+      }
+      if (!SLOTS.includes(body.slot)) throw new HttpError(400, 'Número de grupo no válido.');
+      if (body.action === 'vote') {
+        await vote(state, body);
+        return res.status(200).json({ ok: true });
+      }
+      if (body.action === 'register') {
+        const teamName = text(body.teamName, 40).trim();
+        if (!teamName) throw new HttpError(400, 'Falta el nombre del equipo.');
+        const owner = await register(state, body.slot, teamName);
+        return res.status(200).json({ ok: true, teamName: owner });
+      }
+      await saveBC(state, body);
       return res.status(200).json({ ok: true });
     }
 
-    // Full reset (admin)
-    if (body.action === 'reset') {
-      const slots = Object.keys(BLOB_MAP);
-      await Promise.all(slots.map(s => writeBlob(s, EMPTY_GROUP(s))));
-      return res.status(200).json({ ok: true, message: 'All groups reset' });
-    }
-
-    // Normal group update
-    const { slot, teamName, summary, problem, alternative, financials, risks, recommendation } = body;
-    if (!slot || !BLOB_MAP[slot]) return res.status(400).json({ error: 'Invalid slot' });
-    const data = { slot, teamName, summary, problem, alternative, financials, risks, recommendation, vote: '', timestamp: Date.now() };
-    await writeBlob(slot, data);
-    return res.status(200).json({ ok: true });
+    return res.status(405).json({ error: 'Method not allowed' });
+  } catch (e) {
+    return res.status(e.status || 500).json({ error: e.message });
   }
-
-  if (req.method === 'DELETE') {
-    const { slot } = req.body;
-    if (!slot || !BLOB_MAP[slot]) return res.status(400).json({ error: 'Invalid slot' });
-    await writeBlob(slot, EMPTY_GROUP(slot));
-    return res.status(200).json({ ok: true });
-  }
-
-  return res.status(405).json({ error: 'Method not allowed' });
 }
