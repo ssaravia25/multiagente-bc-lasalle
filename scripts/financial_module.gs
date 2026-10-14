@@ -1,6 +1,6 @@
 /**
  * MÓDULO FINANCIERO — CASO BANCO SIV  (v2 — fórmulas dinámicas)
- * Business Case · CaixaBank 2025 · Sergio Saravia
+ * Business Case · CaixaBank 2026 · Sergio Saravia
  *
  * Instrucciones:
  *  1. Abre script.google.com → Nuevo proyecto → pega este código
@@ -463,7 +463,7 @@ function createDashboard(ss) {
   hdr(sh.getRange('B1:H1'), '📊 MÓDULO FINANCIERO — CASO BANCO SIV', C.DARK, C.GOLD, 18);
   sh.setRowHeight(1, 55);
   sh.getRange('B2:H2').merge()
-    .setValue('Business Case · CaixaBank 2025 · Los valores se actualizan al cambiar parámetros en la hoja VAN')
+    .setValue('Business Case · CaixaBank 2026 · Los valores se actualizan al cambiar parámetros en la hoja VAN')
     .setBackground(C.BLUE).setFontColor(C.WHITE).setFontSize(11)
     .setHorizontalAlignment('center').setVerticalAlignment('middle');
   sh.setRowHeight(2, 32);

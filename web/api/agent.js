@@ -74,7 +74,7 @@ Responde en español con estas secciones:
 **RIESGOS LEGALES**
 - 2-3 riesgos legales principales y cómo mitigarlos
 
-Sé específico para el contexto bancario español y la regulación europea vigente en 2025.`,
+Sé específico para el contexto bancario español y la regulación europea vigente en 2026.`,
 
   risk: `Eres el Agente de Riesgos de un sistema multi-agente de Business Case bancario.
 Tu tarea: identificar y evaluar los principales riesgos de la iniciativa propuesta.

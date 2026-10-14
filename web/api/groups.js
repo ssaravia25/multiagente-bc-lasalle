@@ -179,7 +179,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
       const groups = await readGroups(state);
-      return res.status(200).json({ groups, lastUpdated: Date.now(), class: 'BC-CaixaBank-2025' });
+      return res.status(200).json({ groups, lastUpdated: Date.now(), class: 'BC-CaixaBank-2026' });
     }
 
     if (req.method === 'PUT') {

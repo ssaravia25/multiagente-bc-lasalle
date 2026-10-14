@@ -149,4 +149,4 @@ El sistema viene preconfigurado con el caso del Banco SIV (pérdida de clientes 
 
 ---
 
-Desarrollado con [Claude Code](https://claude.ai/code) · Anthropic 2025
+Desarrollado con [Claude Code](https://claude.ai/code) · Anthropic 2026

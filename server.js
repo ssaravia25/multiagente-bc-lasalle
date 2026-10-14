@@ -1,5 +1,5 @@
 /**
- * Servidor local Multi-Agente — Business Case CaixaBank 2025
+ * Servidor local Multi-Agente — Business Case CaixaBank 2026
  *
  * Usa tu cuenta de Claude Code (sin API key extra, sin costo adicional).
  * Cada agente se ejecuta con `claude --print --model <modelo>` usando tu suscripción,
